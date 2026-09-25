@@ -5,74 +5,53 @@ class OllamaChatClient:
     """Generic reusable client for interacting with a local chat model service."""
 
     def __init__(self, model_name="llama3.2"):
-        """
-        Initialize the client.
-
-        Requirements:
-        - Store the model name.
-        - Create an empty list for conversation history.
-        - Each client instance should have its own history list.
-        """
+        """Initialize the client with a model name and instance-specific message history."""
         self.model_name = model_name
         self.history = []
 
     def send(self, prompt):
-        """
-        Send a prompt to the AI service and return the assistant response text.
+        """Send a prompt to the AI service and return the assistant response text."""
+        if prompt is None or not str(prompt).strip():
+            raise ValueError("Prompt cannot be empty or whitespace only.")
 
-        Requirements:
-        - Reject None, empty, or whitespace-only prompts with ValueError.
-        - Strip the prompt before saving it.
-        - Add a user message to self.history before calling the service.
-        - Call ollama.chat(model=self.model_name, messages=self.history).
-        - Extract usable assistant response content.
-        - Support both dictionary-style and object-style response shapes.
-        - Reject missing, non-string, or blank assistant content.
-        - Add the assistant response to self.history only after a usable response.
-        - Return the assistant response text.
-        - If the service call or response extraction fails:
-            - remove the failed user message,
-            - preserve previous valid history,
-            - raise RuntimeError with a clear service-error message.
-        """
-        # TODO: Validate the prompt.
-        # TODO: Create and append the user message.
-        # TODO: Call ollama.chat().
-        # TODO: Extract assistant content from the response.
-        # TODO: Append the assistant message after a successful response.
-        # TODO: Return the assistant response text.
-        # TODO: Roll back the failed user message and raise RuntimeError if needed.
-        pass
+        clean_prompt = str(prompt).strip()
+        user_msg = {"role": "user", "content": clean_prompt}
+        self.history.append(user_msg)
+
+        try:
+            response = ollama.chat(model=self.model_name, messages=self.history)
+
+            # Support both object-style and dictionary-style responses
+            if hasattr(response, "message"):
+                msg = response.message
+                content = msg.content if hasattr(msg, "content") else msg.get("content")
+            elif isinstance(response, dict) and "message" in response:
+                msg = response["message"]
+                content = msg.get("content") if isinstance(msg, dict) else getattr(msg, "content", None)
+            else:
+                content = None
+
+            if content is None or not isinstance(content, str) or not content.strip():
+                raise ValueError("AI service returned empty or invalid assistant content.")
+
+            assistant_msg = {"role": "assistant", "content": content}
+            self.history.append(assistant_msg)
+            return content
+
+        except Exception as e:
+            # Rollback failed user message on failure
+            if self.history and self.history[-1] == user_msg:
+                self.history.pop()
+            raise RuntimeError(f"AI service request failed: {e}") from e
 
     def reset(self):
-        """
-        Clear the conversation history.
-
-        Requirements:
-        - After this method runs, self.history should be an empty list.
-        """
-        # TODO: Clear conversation history.
-        pass
+        """Clear the conversation history."""
+        self.history = []
 
     def message_count(self):
-        """
-        Return the number of messages currently stored in conversation history.
-
-        Requirements:
-        - Return an integer.
-        - Count both user messages and assistant messages.
-        """
-        # TODO: Return the number of stored messages.
-        pass
+        """Return the number of messages currently stored in conversation history."""
+        return len(self.history)
 
     def get_transcript(self):
-        """
-        Return a safe copy of the conversation history.
-
-        Requirements:
-        - Return a list with the same message dictionaries.
-        - Do not return the internal self.history list directly.
-        - The returned message dictionaries should also be copies.
-        """
-        # TODO: Return a copy of the transcript.
-        pass
+        """Return a safe deep copy of the conversation history."""
+        return [dict(msg) for msg in self.history]
